@@ -3,9 +3,9 @@ import os
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 
+import torch
 from qwen_vl_utils import process_vision_info
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -91,8 +91,10 @@ class ImageDescriber:
                 return_tensors="pt",
             )
 
-            # Move to device (CUDA if available)
-            inputs = inputs.to("cuda")
+            # Move to device (CPU if no CUDA available)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            inputs = inputs.to(device)
+            self.model.to(device)
 
             # Generate output
             generated_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens)

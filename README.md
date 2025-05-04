@@ -13,7 +13,7 @@ pip install git+https://github.com/jzsmoreno/image_describer
 ## Usage
 To run example usage, use:
 ```bash
-python examples/example_usage.py
+jupyter notebook examples/example_usage.ipynb
 ```
 
 ## Dependencies

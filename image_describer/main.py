@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 
 import torch
 from qwen_vl_utils import process_vision_info
-from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+from transformers import TorchAoConfig, AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -26,15 +26,23 @@ class ImageDescriber:
         self.model_path = model_path
         os.makedirs(model_path, exist_ok=True)
 
-        # Load the model and processor
-        logger.info(f"Loading model from {model_path}")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Loading model on {self.device}")
+
         try:
+            quantization_config = TorchAoConfig("int8_weight_only")
             self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_url,
-                torch_dtype="auto",
-                device_map="auto",
                 cache_dir=model_path,
+                quantization_config=quantization_config,
+                low_cpu_mem_usage=True,
             )
+
+            if self.model.device != self.device:
+                self.model.to(self.device)
+
+            if torch.__version__ >= "2.0":
+                self.model = torch.compile(self.model)
             self.processor = AutoProcessor.from_pretrained(
                 model_url,
                 model_type="qwen2_5_vl",
@@ -92,12 +100,11 @@ class ImageDescriber:
             )
 
             # Move to device (CPU if no CUDA available)
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            inputs = inputs.to(device)
-            self.model.to(device)
+            inputs = inputs.to(self.device)
 
             # Generate output
-            generated_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens)
+            with torch.no_grad():  # Avoid gradient computation for inference
+                generated_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens)
             generated_ids_trimmed = [
                 out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
             ]
